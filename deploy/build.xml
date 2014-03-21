@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="nomeProjeto" default="sincronizarAplicacao" basedir="diretorioBase">
+    <!-- Diretório application do CodeIgniter -->
+    <property name="application.library" value="${project.basedir}/application"/>
+
+    <!-- Diretório dos testes -->
+    <property name="application.tests" value="${project.basedir}/tests"/>
+
+    <!-- Diretório temporário para o envio -->
+    <property name="application.build" value="${project.basedir}/deploy/tmp"/>
+
+    <!-- Diretório remoto destino do deploy -->
+    <property name="destination.path" value="diretorioDestino"/>
+
+    <!-- Diretório para os arquivos resultantes das ferramentas de qa -->
+    <property name="path.qatools" value="${project.basedir}/deploy/qatools"/>
+
+    <!-- Diretório para os relatórios do PHPUnit -->
+    <property name="phpunit.report" value="${path.qatools}/phpunit/report"/>
+
+    <target name='testes'>
+        <delete dir="${phpunit.report}" />
+        <delete dir="${phpunit.report}/coverage" />
+        <mkdir dir="${phpunit.report}" />
+        <mkdir dir="${phpunit.report}/coverage" />
+        <coverage-setup database="${phpunit.report}/coverage.db">
+            <fileset dir="${application.tests}">
+                <include name="**/*Test*.php"/>
+                <exclude name="**/Abstract*.php"/>
+            </fileset>
+        </coverage-setup>
+
+        <phpunit
+            bootstrap="${application.library}/third_party/CIUnit/bootstrap_phpunit.php"
+            haltonerror="true"
+            haltonfailure="true"
+            printsummary="true"
+            codecoverage="true">
+            <formatter todir="${phpunit.report}" type="xml"/>
+            <batchtest>
+                <fileset dir="${application.tests}">
+                    <include name="**/*Test*.php"/>
+                </fileset>
+            </batchtest>
+        </phpunit>
+
+        <phpunitreport infile="${phpunit.report}/testsuites.xml" 
+            todir="${phpunit.report}"/>
+        <coverage-report outfile="${phpunit.report}/coverage.xml">
+              <report todir="${phpunit.report}/coverage"/>
+          </coverage-report>
+    </target>
+
+    <target name='qatools'>
+        <phpmd file="${application.library}" ignorePatterns="third_party">
+            <formatter type="html" outfile="${path.qatools}/phpmd/report.html"/>
+        </phpmd>
+
+        <phpcodesniffer
+            standard="PSR2"
+            format="summary"
+            file="${application.library}"
+            ignorePatterns="views,config,logs,language,third_party"
+            haltonerror="true"
+            allowedFileExtensions="php"/>
+    </target>
+
+    <target name="sincronizarAplicacao" depends="testes, qatools">
+        <echo msg="Movendo a pasta ${project.path}, para ${application.build} e sincronizando" />
+        <mkdir dir="${application.build}" />
+        <copy todir="${application.build}">
+            <fileset dir="${project.basedir}">
+                <exclude name="application/logs/*php" />
+                <exclude name=".scriptCI.cfg"/>
+                <exclude name="index.php"/>
+                <exclude name="schemas/datas*" />
+                <exclude name="tests/report/*" />
+            </fileset>
+        </copy>
+        <delete dir="${application.build}/deploy" />
+        <delete dir="${application.build}/user_guide" />
+        <move file="${application.build}/index_production.php" tofile="${application.build}/index.php" />
+        <exec command="for javascripts in `` `ls ${application.build}/assets/js/*.js` ``; do echo $javascripts; uglifyjs $javascripts -o $javascripts; done"/>
+        <filesync
+            sourcedir="${application.build}/"
+            destinationdir="${destination.path}"
+            verbose="true"
+            delete="true"
+        />
+        <delete dir="${application.build}"/>
+    </target>
+</project>
